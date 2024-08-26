@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no"/>
+    <title>Demo</title>
+    <style>
+        #content {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+<div id="content">
+    <div>Please input file url at the textarea bellow</div>
+    <textarea id="urlInput"></textarea>
+    <button id="btn">Download</button>
+    <div id="log"></div>
+</div>
+<script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+<script>
+    var vConsole = new window.VConsole();
+</script>
+<script>
+    const logEle = document.querySelector("#log");
+    const inputEle = document.querySelector("#urlInput");
+    const btn = document.querySelector("#btn");
+    let taskId = 1;
+    btn.addEventListener("click", async () => {
+            const url = inputEle.value;
+            if (url) {
+                    try {
+                            printLogOnPage("try to fetch: " + url);
+                            const data = await fetchFile(url);
+                            printLogOnPage("fetch success: size " + data.size);
+                            const totalBase64 = await transformBase64(data);
+                            printLogOnPage("base64encode success: size " + totalBase64.length);
+                            const name = url.split("/").pop();
+                            const base64 = totalBase64.split(",")[1];
+                            const taskKey = (taskId++).toString();
+                            printLogOnPage(`saveDataToStorage task@${taskKey}: name ${name}, size ${base64.length}`);
+                            if (window.Android && window.Android.saveDataToStorage) {
+                                    window.Android.saveDataToStorage(taskKey, name, base64);
+                            } else {
+                                    printLogOnPage("saveDataToStorage is not defined");
+                            }
+                    } catch (e) {
+                            printLogOnPage(e);
+                    }
+            } else {
+                    printLogOnPage("Fatal: url is empty!");
+            }
+    });
+
+    window.addEventListener("message", (msg) => {
+        const data = JSON.parse(msg.data);
+        if (data.type === "callback") {
+            printLogOnPage(`task@${data.key} ${data.success ? 'success' : 'fail'}`);
+        }
+    });
+
+    async function fetchFile(url) {
+            const response = await fetch(url);
+            if (response.status !== 200) {
+                    throw new Error("failed to fetch");
+            }
+            return response.blob();
+    }
+
+    async function transformBase64(blob) {
+            return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = function() {
+                            if (reader.result) {
+                                    resolve(reader.result);
+                            } else {
+                                    reject("base64 result is empty");
+                            }
+                    }
+                    reader.onerror = function() {
+                            reject("failed to transform to base64");
+                    }
+                    reader.readAsDataURL(blob);
+            })
+    }
+
+    function printLogOnPage(message) {
+            const ele = document.createElement("div");
+            ele.innerText = message;
+            logEle.appendChild(ele);
+    }
+</script>
+</body>
